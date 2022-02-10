@@ -1,5 +1,6 @@
 use std::thread::JoinHandle;
 
+///Iterates over each thread join handle, calls join, then returns the result
 pub struct JoinedIterator<M> {
     pub (crate) _it: std::vec::IntoIter<JoinHandle<M>>,
 }
