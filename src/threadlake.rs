@@ -1,9 +1,9 @@
-use std::thread::{available_parallelism, JoinHandle, Builder};
+use std::thread::{JoinHandle, Builder};
 use crate::threadutilities::{ThreadUtilities, Signal};
 use std::sync::{Mutex, Arc};
 use std::sync::mpsc::{Receiver, Sender, channel};
-use crate::joined_iterator::JoinedIterator;
-use crate::thread_count::ThreadCount;
+use crate::iterators::JoinedIterator;
+use crate::iterators::ThreadIterator;
 
 ///A high level thread pool
 ///
@@ -15,28 +15,14 @@ pub struct ThreadLake<D, R, M = ()> {
     _receiver: Receiver<M>,
     _sender: Sender<M>,
     _data: Arc<D>,
+    _names: Vec<String>,
 }
 
-
-impl<M: std::marker::Send + 'static, R: std::marker::Send + 'static> ThreadLake<(), R, M> {
-
-    ///Create a new thread lake with no Arc data
-    pub fn new<F>(max_threads: F) -> Self
-        where F: ThreadCount,
-    {
-        Self::with_data(max_threads, ())
-    }
-
-}
-
-impl<M: std::marker::Send + 'static, D: std::marker::Sync + std::marker::Send + 'static, R: std::marker::Send + 'static> ThreadLake<D, R, M> {
+impl<M: Send + 'static, D: Sync + Send + 'static, R: Send + 'static> ThreadLake<D, R, M> {
 
     ///Create a thread lake with the number of threads as a closure that provides the available concurrency, and the data to send
-    pub fn with_data<F>(max_threads: F, data: D) -> Self
-        where F: ThreadCount,
+    pub (crate) fn with_data(_max_threads: usize, data: D, names: Vec<String>) -> Self
     {
-        let _max_threads = max_threads.get(available_parallelism().map(|x| x.get())) as usize; //max_threads(available_parallelism().map(|x| x.get()));
-
         let (_sender, _receiver) = channel();
 
         Self {
@@ -46,12 +32,13 @@ impl<M: std::marker::Send + 'static, D: std::marker::Sync + std::marker::Send + 
             _receiver,
             _sender,
             _data: Arc::new(data),
+            _names: names,
         }
     }
 
     ///Spawn each thread in the pool
-    pub fn spawn<F>(& mut self, f: F)
-        where F: Fn(ThreadUtilities<M, D>) -> R + std::marker::Send + 'static + Clone +  std::marker::Sync
+    pub (crate) fn spawn<F>(& mut self, f: F)
+        where F: Fn(ThreadUtilities<D, M>) -> R + Send + 'static + Clone + Sync
     {
         let rcf = Arc::new(f);
 
@@ -63,7 +50,7 @@ impl<M: std::marker::Send + 'static, D: std::marker::Sync + std::marker::Send + 
             let utility = ThreadUtilities {
                 _index: id,
                 _max_count: self._max_threads,
-                _name: format!("Thread: {}", id),
+                _name: if self._names.is_empty() { format!("ThreadLake thread {}", id) } else { self._names[id].clone() },
                 _check: self._signal.clone(),
                 _message: self._sender.clone(),
                 _arc: self._data.clone(),
@@ -110,6 +97,11 @@ impl<M: std::marker::Send + 'static, D: std::marker::Sync + std::marker::Send + 
         JoinedIterator { _it: self._handles.into_iter() }
     }
 
+    /// An iterator over each thread id and thread name pair
+    pub fn thread_iter(&self) -> ThreadIterator<R> {
+        ThreadIterator { _it: self._handles.iter() }
+    }
+
     ///Get the number of threads as supplied by the closure when the lake was created
     pub fn max_threads(&self) -> usize {
         self._max_threads
@@ -120,9 +112,14 @@ impl<M: std::marker::Send + 'static, D: std::marker::Sync + std::marker::Send + 
         self._data.clone()
     }
 
+}
+
+
+impl<M: Send + 'static, D: Sync + Send + 'static, R: Send + 'static> ThreadLake<D, R, M> {
+
+
     ///Get the receiver for messages sent from the threads
     pub fn receiver(&self) -> &Receiver<M> {
         &self._receiver
     }
-
 }

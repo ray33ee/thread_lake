@@ -19,3 +19,22 @@ impl<F> ThreadCount for F
         (self)(available_concurrency.ok()) as usize
     }
 }
+
+///ThreadName describes types that can name threads
+pub trait ThreadName {
+    fn get(self, index: usize) -> String;
+}
+
+impl ThreadName for String {
+    fn get(self, _: usize) -> String {
+        self
+    }
+}
+
+impl<F> ThreadName for F
+    where F: FnOnce(usize) -> String
+{
+    fn get(self, index: usize) -> String {
+        (self)(index)
+    }
+}

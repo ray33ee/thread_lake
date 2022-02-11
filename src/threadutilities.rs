@@ -12,7 +12,7 @@ pub (crate) enum Signal {
 }
 
 ///An object sent to each thread that contains useful information and functions
-pub struct ThreadUtilities<M, D> {
+pub struct ThreadUtilities<D, M = ()> {
     pub (crate) _index: usize,
     pub (crate) _max_count: usize,
     pub (crate) _name: String,
@@ -21,7 +21,7 @@ pub struct ThreadUtilities<M, D> {
     pub (crate) _arc: Arc<D>,
 }
 
-impl<M, D> ThreadUtilities<M, D> {
+impl<D, M> ThreadUtilities<D, M> {
 
     ///Each thread is given an index in 0..max_threads, return the index
     pub fn index(&self) -> usize {
