@@ -7,16 +7,20 @@ pub mod iterators;
 
 ///Builder object to create thread pools
 pub mod builder;
-mod traits;
+
+pub mod traits;
+
+///Object used to mutably access a vector by multiple threads simultaneously
+pub mod disjointer;
 
 
 #[cfg(test)]
 mod tests {
     use crate::threadlake::ThreadLake;
     use std::time::Duration;
-    use std::ops::Deref;
     use crate::threadutilities::ThreadUtilities;
     use crate::builder::Builder;
+    use crate::disjointer::Disjointer;
 
     #[test]
     fn hello_lakes() {
@@ -126,8 +130,7 @@ mod tests {
         let lake= Builder::with_data(|x: Option<usize>| x.unwrap(), (data, predicate))
             .spawn(|x: ThreadUtilities<_> | {
 
-                let d = x.data();
-                let (data, pred) = d.deref();
+                let (data, pred) = x.data();
                 let (slice, _) = x.split_slice(data.as_slice());
 
                 for element in slice {
@@ -177,6 +180,60 @@ mod tests {
         }
 
         lake.join();
+    }
+
+    /*fn multithreaded_reduce<T, B, F>(list: Vec<T>, init: T, f: F) -> T
+        where
+            T: Sync + 'static + Send + Clone,
+            F: Fn(T, &T) -> T + Sync + Send + 'static + Clone,
+    {
+
+        let lake = Builder::with_data(|x: Option<usize>| x.unwrap(), (list, f, init.clone()))
+            .spawn(|x: ThreadUtilities<_>| {
+
+                let (list, f, _) = x.data();
+
+                let (slice, _) = x.split_slice(list.as_slice());
+
+                let first = slice[0].clone();
+
+                slice.iter().skip(1).fold(first, f)
+
+            });
+
+        let f = lake.data().1.clone();
+
+        let mut init = init.clone();
+
+        for element in lake.join_iter() {
+            init = (f)(init, &element.unwrap());
+        }
+
+        init
+
+    }*/
+
+    #[test]
+    fn disjoint_test() {
+        let v = vec![0; 100000];
+
+        let v = Disjointer::new(v);
+
+        let lake = Builder::with_data(5, v)
+            .spawn(|x: ThreadUtilities<_> |{
+                let slice = x.data().piece(&x);
+
+                for element in slice {
+                    *element = *element + 1;
+                }
+
+            });
+
+        let d = lake.join().unwrap().take();
+
+        assert!(d.into_iter().all(|x| x == 1))
+
+
     }
 
 }

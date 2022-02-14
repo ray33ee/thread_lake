@@ -4,6 +4,7 @@ use std::sync::{Mutex, Arc};
 use std::sync::mpsc::{Receiver, Sender, channel};
 use crate::iterators::JoinedIterator;
 use crate::iterators::ThreadIterator;
+use std::ops::Deref;
 
 ///A high level thread pool
 ///
@@ -41,7 +42,6 @@ impl<M: Send + 'static, D: Sync + Send + 'static, R: Send + 'static> ThreadLake<
         where F: Fn(ThreadUtilities<D, M>) -> R + Send + 'static + Clone + Sync
     {
         let rcf = Arc::new(f);
-
 
         for id in 0..self._max_threads {
 
@@ -86,10 +86,14 @@ impl<M: Send + 'static, D: Sync + Send + 'static, R: Send + 'static> ThreadLake<
     }
 
     ///Iterates over [`JoinedIterator`] and consumes the results
-    pub fn join(self) {
+    ///
+    /// Moves the data out of the lake, if there are no other references to it
+    pub fn join(self) -> Option<D> {
+        let data = self.arc();
         for _ in self.join_iter() {
 
         }
+        Arc::try_unwrap(data).ok()
     }
 
     ///An iterator over each thread, calling join and returning the result
@@ -107,8 +111,13 @@ impl<M: Send + 'static, D: Sync + Send + 'static, R: Send + 'static> ThreadLake<
         self._max_threads
     }
 
-    /// Get an Arc to the data
-    pub fn data(&self) -> Arc<D> {
+    /// Get a reference to the data
+    pub fn data(&self) -> & D {
+        self._data.deref()
+    }
+
+    ///Get the data as an arc
+    pub fn arc(&self) -> Arc<D> {
         self._data.clone()
     }
 

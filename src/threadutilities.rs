@@ -73,9 +73,23 @@ impl<D, M> ThreadUtilities<D, M> {
         (&slice[self.range(slice.len())], slice.len() / self._max_count)
     }
 
-    ///Get the Arc data
-    pub fn data(&self) -> Arc<D> {
-        self._arc.clone()
+    ///Similar to [`ThreadUtilities::split_slice`], but for mutable slices.
+    ///
+    /// Should only be used by the [`Disjointer`]
+    pub (crate) fn split_slice_mut<'s, S>(&self, slice: & 's mut [S]) -> (& 's mut [S], usize) {
+        let len = slice.len();
+        (&mut slice[self.range(len)], len / self._max_count)
     }
 
+    ///Get the underlying data
+    pub fn data(&self) -> & D {
+        self._arc.deref()
+    }
+
+    /*
+    ///Get the data as an arc
+    pub fn arc(&self) -> Arc<D> {
+        self._data.clone()
+    }
+    */
 }
