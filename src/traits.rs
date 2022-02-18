@@ -20,6 +20,24 @@ impl<F> ThreadCount for F
     }
 }
 
+///Used solely as a [`ThreadCount`] that makes use of the full available parallelism
+pub struct FullParallelism;
+
+impl ThreadCount for FullParallelism {
+    fn get(self, available_concurrency: Result<usize>) -> usize {
+        available_concurrency.unwrap()
+    }
+}
+
+///Used solely as a [`ThreadCount`] that makes use of the full available parallelism minus one (for the main thread)
+pub struct PartialParallelism;
+
+impl ThreadCount for PartialParallelism {
+    fn get(self, available_concurrency: Result<usize>) -> usize {
+        available_concurrency.unwrap() - 1
+    }
+}
+
 ///ThreadName describes types that can name threads
 pub trait ThreadName {
     fn get(self, index: usize) -> String;

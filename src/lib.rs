@@ -13,6 +13,9 @@ pub mod traits;
 ///Object used to mutably access a vector by multiple threads simultaneously
 pub mod disjointer;
 
+///Objects encapsulating a subslice created from the [`threadutilities::ThreadUtilities`] functions
+pub mod split;
+
 
 #[cfg(test)]
 mod tests {
@@ -21,6 +24,8 @@ mod tests {
     use crate::threadutilities::ThreadUtilities;
     use crate::builder::Builder;
     use crate::disjointer::Disjointer;
+    use crate::traits::FullParallelism;
+    use std::sync::Mutex;
 
     #[test]
     fn hello_lakes() {
@@ -63,9 +68,9 @@ mod tests {
 
                 let v = x.data();
 
-                let (slice, width) = x.split_slice(v.as_slice());
+                let subslice = x.split_slice(v.as_slice());
 
-                slice.iter().enumerate().find_map(|(ind, val)| if *val != 0 { Some(ind + width * x.index() ) } else {None})
+                subslice.iter().enumerate().find_map(|(ind, val)| if *val != 0 { Some(ind + subslice.width() * x.index() ) } else {None})
 
             });
 
@@ -98,12 +103,13 @@ mod tests {
 
         lake.join();
 
+
     }
 
     #[test]
     fn simple_messages() {
 
-        let lake = Builder::new(|x: Option<usize>| x.unwrap())
+        let lake = Builder::new(FullParallelism)
             .spawn(|x| {
                 x.send(x.index()).unwrap();
 
@@ -127,23 +133,38 @@ mod tests {
     {
 
 
-        let lake= Builder::with_data(|x: Option<usize>| x.unwrap(), (data, predicate))
-            .spawn(|x: ThreadUtilities<_> | {
+        let lake= Builder::with_data(FullParallelism, (data, predicate))
+            .spawn(|x: ThreadUtilities<_, _> | {
+                {
+                    let (data, pred) = x.data();
+                    let subslice = x.split_slice(data.as_slice());
 
-                let (data, pred) = x.data();
-                let (slice, _) = x.split_slice(data.as_slice());
-
-                for element in slice {
-                    if (pred)(element) {
-                        return true
+                    for  element in subslice {
+                        if (pred)(element) {
+                            //When we find the element, send a 'found' message to the main thread, then terminate this thread
+                            x.send(Some(())).ok();
+                            return
+                        }
                     }
                 }
-
-                false
+                x.send(None).ok();
             });
 
+        //We expect one response from each thread
+        for _ in 0..lake.max_threads() {
+            match lake.receiver().recv().unwrap() {
+                Some(_) => {
+                    //If a thread has found the result, return true. This could leave other worker threads still searching, but the main thread will continue
+                    return true
+                },
+                None => {
 
-        lake.join_iter().any(|x| x.unwrap())
+                }
+            }
+        }
+
+        false
+        //lake.join_iter().any(|x| x.unwrap())
     }
 
     #[test]
@@ -219,20 +240,66 @@ mod tests {
 
         let v = Disjointer::new(v);
 
-        let lake = Builder::with_data(5, v)
+        let lake = Builder::with_data(FullParallelism, v)
             .spawn(|x: ThreadUtilities<_> |{
-                let slice = x.data().piece(&x);
+                let mut subslice = x.data().piece(&x);
 
-                for element in slice {
-                    *element = *element + 1;
+                let offset = subslice.width() * x.index();
+
+                for (i, element) in subslice.iter_mut().enumerate() {
+                    *element = *element + (i + offset); //i + offset gives the index of the entire array, i gives the index of the subslice
                 }
+
 
             });
 
         let d = lake.join().unwrap().take();
 
-        assert!(d.into_iter().all(|x| x == 1))
+        //Here we use another lake to verify the results, but the two algorithms could be combined into one
+        let lake = Builder::with_data(FullParallelism, d)
+            .spawn(|x: ThreadUtilities<_>| {
+                let subslice = x.split_slice(x.data());
 
+                let offset = subslice.width() * x.index();
+
+                subslice.iter().enumerate().all(|(i, x)| *x == i + offset)
+            });
+
+        assert!(lake.join_iter().all(|x| x.unwrap() == true))
+
+
+    }
+
+    #[test]
+    fn mutex_test() {
+        let test_vector: Vec<_> = (0..100000).map(|x| x).collect();
+
+        let results = Mutex::new(Vec::<i32>::new());
+
+        let lake = Builder::with_data(FullParallelism, (test_vector, results))
+            .spawn(|x: ThreadUtilities<_>| {
+
+                let subslice = x.split_slice(&x.data().0);
+
+                for element in subslice {
+
+                    //If we find a power of 2, add it to the results array
+                    if (*element as f64).log2() == (*element as f64).log2().floor() {
+                        let mut res = x.data().1.lock().unwrap();
+
+                        res.push(*element);
+                    }
+                }
+
+            });
+
+        let (_, results) = lake.join().unwrap();
+
+        let mut results = results.into_inner().unwrap();
+
+        results.sort();
+
+        assert_eq!(results, vec![0, 1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536]);
 
     }
 

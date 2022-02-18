@@ -2,6 +2,7 @@
 use std::sync::mpsc::{Sender, SendError};
 use std::sync::{Arc, Mutex};
 use std::ops::Deref;
+use crate::split::{SubSlice, SubSliceMut};
 
 #[derive(Clone)]
 pub (crate) enum Signal {
@@ -69,16 +70,16 @@ impl<D, M> ThreadUtilities<D, M> {
     }
 
     ///Similar to [`ThreadUtilities::range`], splits a slice into disjoint slices based on the thread index
-    pub fn split_slice<'s, S>(&self, slice: & 's [S]) -> (& 's [S], usize) {
-        (&slice[self.range(slice.len())], slice.len() / self._max_count)
+    pub fn split_slice<'s, S>(&self, slice: & 's [S]) -> SubSlice<'s, S> {
+        SubSlice { _slice: &slice[self.range(slice.len())], _width: slice.len() / self._max_count }
     }
 
     ///Similar to [`ThreadUtilities::split_slice`], but for mutable slices.
     ///
     /// Should only be used by the [`Disjointer`]
-    pub (crate) fn split_slice_mut<'s, S>(&self, slice: & 's mut [S]) -> (& 's mut [S], usize) {
+    pub (crate) fn split_slice_mut<'s, S>(&self, slice: & 's mut [S]) -> SubSliceMut<'s, S> {
         let len = slice.len();
-        (&mut slice[self.range(len)], len / self._max_count)
+        SubSliceMut { _slice: &mut slice[self.range(len)], _width: len / self._max_count}
     }
 
     ///Get the underlying data
@@ -86,10 +87,10 @@ impl<D, M> ThreadUtilities<D, M> {
         self._arc.deref()
     }
 
-    /*
+
     ///Get the data as an arc
     pub fn arc(&self) -> Arc<D> {
-        self._data.clone()
+        self._arc.clone()
     }
-    */
+
 }

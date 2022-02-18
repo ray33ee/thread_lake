@@ -1,5 +1,6 @@
 use std::cell::UnsafeCell;
 use crate::threadutilities::ThreadUtilities;
+use crate::split::SubSliceMut;
 
 ///Disjointer takes a vector, and partitions it into roughly equal sized disjoint mutable slices
 ///
@@ -25,10 +26,10 @@ impl<T> Disjointer<T>
     }
 
     ///Get a mutable subslice for the current thread that is unique and non-overlapping with other threads
-    pub fn piece<D, M>(&self, utility: & ThreadUtilities<D, M>) -> & mut [T] {
+    pub fn piece<D, M>(&self, utility: & ThreadUtilities<D, M>) -> SubSliceMut<T> {
         unsafe {
             let entire_slice = (*self.0.get()).as_mut_slice();
-            utility.split_slice_mut(entire_slice).0
+            utility.split_slice_mut(entire_slice)
         }
     }
 
